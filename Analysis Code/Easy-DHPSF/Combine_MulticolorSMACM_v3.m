@@ -16,6 +16,7 @@ if ~isequal(dataFile,0)
     load(dataFile)
 end
 
+
 if ~registrationComplete
     
     %% Ask user for relevant datafiles
@@ -27,9 +28,12 @@ if ~registrationComplete
     load([tformPath tformFile]);
 
     %% Prepare for data interpolation
-    x = matched_cp_reflected(:,5);
-    y = matched_cp_reflected(:,6);
-    z = matched_cp_reflected(:,7);
+    if ~exist('evalCP')
+        evalCP = (1:size(matched_cp_reflected,1))';
+    end
+    x = matched_cp_reflected(evalCP,5);
+    y = matched_cp_reflected(evalCP,6);
+    z = matched_cp_reflected(evalCP,7);
     F_FRE = TriScatteredInterp(x,y,z,FRE_full(:,1), 'natural');
     F_FRE_X = TriScatteredInterp(x,y,z,FRE_full(:,2), 'natural');
     F_FRE_Y = TriScatteredInterp(x,y,z,FRE_full(:,3), 'natural');
@@ -50,6 +54,7 @@ if ~registrationComplete
     fileNum = 1;
     LocFiles = {};
     dataSets = [];
+    useFids = 1; % use fids unless one or both files does not have a fiducial
     
     while ~isequal(LocFile,0)
         
@@ -59,9 +64,7 @@ if ~registrationComplete
         
         %    Assemble the structure for this dataset
         dataSet.frameNum = frameNum;
-        dataSet.xLoc = xLoc;
-        dataSet.yLoc = yLoc;
-        dataSet.zLoc = zLoc;
+        
         dataSet.sigmaX = sigmaX;
         dataSet.sigmaY = sigmaY;
         dataSet.sigmaZ = sigmaZ;
@@ -71,6 +74,19 @@ if ~registrationComplete
         dataSet.fidTrackY = fidTrackY;
         dataSet.fidTrackZ = fidTrackZ;
         dataSet.wlShift = [wlShiftX, wlShiftY];
+        
+        if isempty(fidTrackX)
+            dataSet.fidCorrected = 0;
+            useFids = 0;
+            dataSet.xLoc = xLoc;
+            dataSet.yLoc = yLoc;
+            dataSet.zLoc = zLoc;
+        else
+            dataSet.fidCorrected = 1;
+            dataSet.xLoc = xLocRaw;
+            dataSet.yLoc = yLocRaw;
+            dataSet.zLoc = zLocRaw;
+        end
         
         dlg_title = 'Transform dataset';
         prompt = {'Do you want to transform this dataset?'};
@@ -82,36 +98,45 @@ if ~registrationComplete
                 
                 % transform SM data
                 dataSet.transformedDataset = true;
-                transformedData = transformData([xLoc, yLoc, zLoc],tform);
+                
+                if dataSet.fidCorrected
+                    transformedData = transformData([xLocRaw, yLocRaw, zLocRaw],tform);
+                else
+                    transformedData = transformData([xLoc, yLoc, zLoc],tform);
+                end
                 dataSet.xLoc_transformed = transformedData(:,1);
                 dataSet.yLoc_transformed = transformedData(:,2);
                 dataSet.zLoc_transformed = transformedData(:,3);
                 
-                % transform fiducial data
-                % ToDo:  Code in the possibility for multiple fiducial in the
-                % field-of-view.  Currently the code only handles a single one.
-                dataSet.fidTrackX_transformed = NaN(length(fidTrackX),1);
-                dataSet.fidTrackY_transformed = NaN(length(fidTrackX),1);
-                dataSet.fidTrackZ_transformed = NaN(length(fidTrackX),1);
-                transformedData = transformData([fidTrackX(~isnan(fidTrackX)),...
-                    fidTrackY(~isnan(fidTrackY)),...
-                    fidTrackZ(~isnan(fidTrackZ))],tform);
-                dataSet.fidTrackX_transformed(~isnan(fidTrackX)) = transformedData(:,1);
-                dataSet.fidTrackY_transformed(~isnan(fidTrackY)) = transformedData(:,2);
-                dataSet.fidTrackZ_transformed(~isnan(fidTrackZ)) = transformedData(:,3);
                 
-                dataSet.fidTrack_interpolated_FRE = NaN(length(fidTrackX),4);
-                dataSet.fidTrack_interpolated_TRE = NaN(length(fidTrackX),4);
-                dataSet.fidTrack_interpolated_FRE(~isnan(fidTrackX),:) = [...
-                    F_FRE(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
-                    F_FRE_X(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
-                    F_FRE_Y(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
-                    F_FRE_Z(transformedData(:,1),transformedData(:,2),transformedData(:,3)) ];
-                dataSet.fidTrack_interpolated_TRE(~isnan(fidTrackX),:) = [...
-                    F_TRE(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
-                    F_TRE_X(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
-                    F_TRE_Y(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
-                    F_TRE_Z(transformedData(:,1),transformedData(:,2),transformedData(:,3)) ];
+                if dataSet.fidCorrected
+                    % transform fiducial data
+                    % ToDo:  Code in the possibility for multiple fiducial in the
+                    % field-of-view.  Currently the code only handles a single one.
+                    dataSet.fidTrackX_transformed = NaN(length(fidTrackX),1);
+                    dataSet.fidTrackY_transformed = NaN(length(fidTrackX),1);
+                    dataSet.fidTrackZ_transformed = NaN(length(fidTrackX),1);
+                    transformedData = transformData([fidTrackX(~isnan(fidTrackX)),...
+                        fidTrackY(~isnan(fidTrackY)),...
+                        fidTrackZ(~isnan(fidTrackZ))],tform);
+                    dataSet.fidTrackX_transformed(~isnan(fidTrackX)) = transformedData(:,1);
+                    dataSet.fidTrackY_transformed(~isnan(fidTrackY)) = transformedData(:,2);
+                    dataSet.fidTrackZ_transformed(~isnan(fidTrackZ)) = transformedData(:,3);
+
+                    dataSet.fidTrack_interpolated_FRE = NaN(length(fidTrackX),4);
+                    dataSet.fidTrack_interpolated_TRE = NaN(length(fidTrackX),4);
+                    dataSet.fidTrack_interpolated_FRE(~isnan(fidTrackX),:) = [...
+                        F_FRE(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
+                        F_FRE_X(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
+                        F_FRE_Y(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
+                        F_FRE_Z(transformedData(:,1),transformedData(:,2),transformedData(:,3)) ];
+                    dataSet.fidTrack_interpolated_TRE(~isnan(fidTrackX),:) = [...
+                        F_TRE(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
+                        F_TRE_X(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
+                        F_TRE_Y(transformedData(:,1),transformedData(:,2),transformedData(:,3)),...
+                        F_TRE_Z(transformedData(:,1),transformedData(:,2),transformedData(:,3)) ];
+                        dataSet.fidCorrected = 1;
+                end
                 
             case 'No'
                 
@@ -165,6 +190,11 @@ if ~registrationComplete
     clear numPhotonRange numPhotons prompt questiondialog sigmaBounds
     clear sigmaRatioLimit sigmaX sigmaY sigmaZ transformedData
     clear xLoc yLoc zLoc zRange fidTrackX fidTrackY fidTrackZ
+    % save('workspace.mat');
+    
+    color = {'Green', 'Red', 'Blue', 'Cyan', 'Yellow' };
+    
+    if useFids
     
     %% Identify frames based on the sequence log
     % load data and register sequence log to data frames
@@ -175,6 +205,28 @@ if ~registrationComplete
     end
 
     sifLogData =  importdata([logPath logFile]);
+    sifLogData = sifLogData(1:max(vertcat(dataSets(:).frameNum)),:);
+    
+    for k = 1:size(sifLogData,1) % kludge fix - should not be needed!!
+        if sifLogData(k,3)==1 && sifLogData(k,2)==1
+            sifLogData(k,1:3) = [0 1 1];
+        elseif sifLogData(k,3)==1
+            sifLogData(k,1:3) = [0 0 1];
+        elseif sifLogData(k,2)==1
+            sifLogData(k,1:3) = [0 1 0];
+        else
+            sifLogData(k,1:3) = [nan nan nan];
+        end
+    end
+    sifLogData(:,4) = [];
+    for k = 1:size(sifLogData,1)
+        if isnan(sifLogData(k,1)) && k < size(sifLogData,1)
+            sifLogData(k,:) = sifLogData(k+1,:);
+        else
+            sifLogData(k,1:3) = [0 0 0];
+        end
+    end
+    
     frames_green = find(sifLogData(:,2) == 1);
     frames_red = find(sifLogData(:,3) == 1);
     selectedFrames = unique(sort([frames_green; frames_red]));
@@ -182,7 +234,7 @@ if ~registrationComplete
     %     endFrames_green = frames_green(find(diff(frames_green)==36));
     temp = diff(frames_red);
     endFrames_red = frames_red(find(diff(frames_red)== mean(temp(temp>4))));
-    startFrames_green = endFrames_red+1;
+    startFrames_green = endFrames_red+1; % this seems very likely to fail if we make any changes to the acquisition parameters....
     clear temp
 
     %% Show the decomposed fiducial tracks
@@ -205,8 +257,8 @@ if ~registrationComplete
         end
     end
     
-    color = {'Green', 'Red', 'Blue', 'Cyan', 'Yellow' };
-    figure_h_a = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
+    
+    figure_h_b = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
     set(gcf,'DefaultTextFontName','Arial','DefaultAxesFontName','Arial',...
         'DefaultTextFontSize',12,'DefaultAxesFontSize',12,...
         'DefaultAxesTickLength',[0.01 0.01],'DefaultAxesTickDir','out',...
@@ -218,7 +270,6 @@ if ~registrationComplete
             subplot(3,1,1)
             plot(dataSets(i).fidTrackX_transformed, color{i});
             xlabel('frame number');ylabel('X position (nm)');
-            title('Raw red and green channel fiducial tracks after registration')
             hold on
             subplot(3,1,2)
             plot(dataSets(i).fidTrackY_transformed, color{i});
@@ -258,16 +309,13 @@ if ~registrationComplete
 %     plot(nanmean(fidTracksZ,2), 'black');
 %     xlabel('frame number');ylabel('Z position (nm)');
 %     hold off
-
-    h = uicontrol('Position',[20 20 200 40],'String','Continue',...
-        'Callback','uiresume(gcbf)');
-    uiwait(gcf);
         
     %% Pick the appropriate track to use as drift correction
     
     dlg_title = 'Inspect Fiducial Tracks';
     prompt = {'Choose Fiducial Track to denoise and use to correct drift'};
-    questiondialog = questdlg(prompt,dlg_title, 'untransformed', 'transformed', 'Cancel', 'untransformed'  );
+    def =       { 'untransformed'  };
+    questiondialog = questdlg(prompt,dlg_title,'untransformed','transformed', def);
     % Handle response
     switch questiondialog
         case 'untransformed'
@@ -277,56 +325,50 @@ if ~registrationComplete
         case 'Cancel'
             error('User cancelled the program');
     end
-    
-    
+
     %% Denoise the raw data   
    
-    dlg_title = 'Denoise the tracks';
-    prompt = {'Try to get the smoothest line possible that still represents the drift'};
-    questiondialog = questdlg(prompt,dlg_title, 'Continue', 'Cancel', 'Continue'  );
-    % Handle response
-    switch questiondialog
-        case 'Continue'
-        case 'Cancel'
-            error('User cancelled the program');
-    end
-    
     % Denoise the red illuminated frames 
     fidTracksX_denoised_redFrames = nan(size(fidTracksX,1),size(fidTracksX,2));
     fidTracksY_denoised_redFrames = nan(size(fidTracksX,1),size(fidTracksX,2));
     fidTracksZ_denoised_redFrames = nan(size(fidTracksX,1),size(fidTracksX,2));
-
+    
+    
     [fidTracksX_denoised_redFrames(frames_red,transformedDataSet),...
         fidTracksY_denoised_redFrames(frames_red,transformedDataSet),...
         fidTracksZ_denoised_redFrames(frames_red,transformedDataSet)] = f_waveletFidTracks(...
         fidTracksX(frames_red,transformedDataSet),...
         fidTracksY(frames_red,transformedDataSet),...
-        fidTracksZ(frames_red,transformedDataSet),0);
+        fidTracksZ(frames_red,transformedDataSet),1);%0);
     [fidTracksX_denoised_redFrames(frames_red,untransformedDataSet),...
         fidTracksY_denoised_redFrames(frames_red,untransformedDataSet),...
         fidTracksZ_denoised_redFrames(frames_red,untransformedDataSet)] = f_waveletFidTracks(...
         fidTracksX(frames_red,untransformedDataSet),...
         fidTracksY(frames_red,untransformedDataSet),...
-        fidTracksZ(frames_red,untransformedDataSet),0);
+        fidTracksZ(frames_red,untransformedDataSet),1);%0);
     
     % Denoise the green illuminated frames 
     fidTracksX_denoised_greenFrames = nan(size(fidTracksX,1),size(fidTracksX,2));
     fidTracksY_denoised_greenFrames = nan(size(fidTracksX,1),size(fidTracksX,2));
     fidTracksZ_denoised_greenFrames = nan(size(fidTracksX,1),size(fidTracksX,2));
-
+    
+    frames_green(frames_green>length(fidTracksX))=[]; % in case the sif log goes too long
+    frames_red(frames_red>length(fidTracksX))=[];
+    
     [fidTracksX_denoised_greenFrames(frames_green,transformedDataSet),...
         fidTracksY_denoised_greenFrames(frames_green,transformedDataSet),...
         fidTracksZ_denoised_greenFrames(frames_green,transformedDataSet)] = f_waveletFidTracks(...
         fidTracksX(frames_green,transformedDataSet),...
         fidTracksY(frames_green,transformedDataSet),...
-        fidTracksZ(frames_green,transformedDataSet),0);
+        fidTracksZ(frames_green,transformedDataSet),1);%0);
     [fidTracksX_denoised_greenFrames(frames_green,untransformedDataSet),...
         fidTracksY_denoised_greenFrames(frames_green,untransformedDataSet),...
         fidTracksZ_denoised_greenFrames(frames_green,untransformedDataSet)] = f_waveletFidTracks(...
         fidTracksX(frames_green,untransformedDataSet),...
         fidTracksY(frames_green,untransformedDataSet),...
-        fidTracksZ(frames_green,untransformedDataSet),0);
+        fidTracksZ(frames_green,untransformedDataSet),1);%0);
 
+    save('workspace.mat')
     % Show the piecewise denoised tracks of the chosen channel
     color = {'Green', 'Red', 'Blue', 'Cyan', 'Yellow' };
     figure_h_b = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
@@ -341,7 +383,6 @@ if ~registrationComplete
     plot(fidTracksX_denoised_redFrames(:,chosenFidTrack), color{2});
     hold off
     xlabel('frame number');ylabel('X position (nm)');
-    title('Denoised red and green illuminated chosen fiducial track')
     
     subplot(3,1,2)
     plot(fidTracksY_denoised_greenFrames(:,chosenFidTrack), color{1});
@@ -357,9 +398,7 @@ if ~registrationComplete
     hold off
     xlabel('frame number');ylabel('Z position (nm)');
     
-        h = uicontrol('Position',[20 20 200 40],'String','Continue',...
-        'Callback','uiresume(gcbf)');
-    uiwait(gcf);
+    
     
     %% Compute the shifts at the transition Frames
     shiftX =  fidTracksX_denoised_greenFrames(startFrames_green,:) - ...
@@ -371,6 +410,11 @@ if ~registrationComplete
     
     shifts_mean = [nanmean(shiftX,1);nanmean(shiftY,1);nanmean(shiftZ,1)]
     shifts_std = [nanstd(shiftX,1);nanstd(shiftY,1);nanstd(shiftZ,1)]
+    
+%     figure
+%     hist(fidTracksX_denoised_greenFrames(startFrames_green,:) - fidTracksX_denoised_redFrames(endFrames_red,:),20)
+%     hist(fidTracksY_denoised_greenFrames(startFrames_green,:) - fidTracksY_denoised_redFrames(endFrames_red,:),20)
+%     hist(fidTracksZ_denoised_greenFrames(startFrames_green,:) - fidTracksZ_denoised_redFrames(endFrames_red,:),20)
     
     lb = shifts_mean-1.5*shifts_std;
     ub = shifts_mean+1.5*shifts_std;
@@ -389,29 +433,6 @@ if ~registrationComplete
         [std(shiftZ(shiftZ(:,1)>=lb(3,1) & shiftZ(:,1)<=ub(3,1),1)),...
         std(shiftZ(shiftZ(:,2)>=lb(3,2) & shiftZ(:,2)<=ub(3,2),2))]];
     
-    figure_h_c = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
-    set(gcf,'DefaultTextFontName','Arial','DefaultAxesFontName','Arial',...
-        'DefaultTextFontSize',12,'DefaultAxesFontSize',12,...
-        'DefaultAxesTickLength',[0.01 0.01],'DefaultAxesTickDir','out',...
-        'DefaultAxesLineWidth',1.2);
-    
-    subplot(3,1,1)
-    hist(fidTracksX_denoised_greenFrames(startFrames_green,:) - fidTracksX_denoised_redFrames(endFrames_red,:),-150:5:150)
-    xlim([-160 160])
-    legend({'green channel';'red channel'})
-    title('Shift distributions due to changing illumination')
-    subplot(3,1,2)
-    hist(fidTracksY_denoised_greenFrames(startFrames_green,:) - fidTracksY_denoised_redFrames(endFrames_red,:),-150:5:150)
-    xlim([-160 160])
-    legend({'green channel';'red channel'})
-    subplot(3,1,3)
-    hist(fidTracksZ_denoised_greenFrames(startFrames_green,:) - fidTracksZ_denoised_redFrames(endFrames_red,:),-150:5:150)
-    xlim([-160 160])
-    legend({'green channel';'red channel'})
-    
-        h = uicontrol('Position',[20 20 200 40],'String','Continue',...
-        'Callback','uiresume(gcbf)');
-    uiwait(gcf);
     
     %% shift the green illuminated portion of the fiducial tracks to fit the red illuminated portion 
 
@@ -426,9 +447,9 @@ if ~registrationComplete
     fidTracksZ_shifted(frames_green,1) = fidTracksZ(frames_green,1) - shifts_mean_filt(3,1);
     fidTracksZ_shifted(frames_green,2) = fidTracksZ(frames_green,2) - shifts_mean_filt(3,2);
     
-    % Show the illumination induced shifted fiducial tracks to make sure the offsets are taken care of 
+    % Show the chromatic shifted fiducial tracks to make sure the offsets are taken care of 
     color = {'Green', 'Red', 'Blue', 'Cyan', 'Yellow' };
-    figure_h_d = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
+    figure_h_b = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
     set(gcf,'DefaultTextFontName','Arial','DefaultAxesFontName','Arial',...
         'DefaultTextFontSize',12,'DefaultAxesFontSize',12,...
         'DefaultAxesTickLength',[0.01 0.01],'DefaultAxesTickDir','out',...
@@ -438,7 +459,6 @@ if ~registrationComplete
         subplot(3,1,1)
         plot(fidTracksX_shifted(:,i), color{i});
         xlabel('frame number');ylabel('X position (nm)');
-        title('Corrected fiducial tracks after illumination induced shift correction')
         hold on
         subplot(3,1,2)
         plot(fidTracksY_shifted(:,i), color{i});
@@ -451,34 +471,24 @@ if ~registrationComplete
     end
     hold off
     
-    %% denoise the corrected tracks
+    %% denoise the chromatic shifted tracks
 
-        dlg_title = 'Denoise the tracks';
-    prompt = {'Try to get the smoothest line possible that still represents the drift'};
-    questiondialog = questdlg(prompt,dlg_title, 'Continue', 'Cancel', 'Continue'  );
-    % Handle response
-    switch questiondialog
-        case 'Continue'
-        case 'Cancel'
-            error('User cancelled the program');
-    end
-    
     [fidTracksX_shifted_denoised(:,transformedDataSet),...
         fidTracksY_shifted_denoised(:,transformedDataSet),...
         fidTracksZ_shifted_denoised(:,transformedDataSet)] = f_waveletFidTracks(...
         fidTracksX_shifted(:,transformedDataSet),...
         fidTracksY_shifted(:,transformedDataSet),...
-        fidTracksZ_shifted(:,transformedDataSet),0);
+        fidTracksZ_shifted(:,transformedDataSet),1);
     [fidTracksX_shifted_denoised(:,untransformedDataSet),...
         fidTracksY_shifted_denoised(:,untransformedDataSet),...
         fidTracksZ_shifted_denoised(:,untransformedDataSet)] = f_waveletFidTracks(...
         fidTracksX_shifted(:,untransformedDataSet),...
         fidTracksY_shifted(:,untransformedDataSet),...
-        fidTracksZ_shifted(:,untransformedDataSet),0);
+        fidTracksZ_shifted(:,untransformedDataSet),1);
     
         % Show the chromatic shifted fiducial tracks and the denoising result 
     color = {'Green', 'Red', 'Blue', 'Cyan', 'Yellow' };
-    figure_h_e = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
+    figure_h_b = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
     set(gcf,'DefaultTextFontName','Arial','DefaultAxesFontName','Arial',...
         'DefaultTextFontSize',12,'DefaultAxesFontSize',12,...
         'DefaultAxesTickLength',[0.01 0.01],'DefaultAxesTickDir','out',...
@@ -488,7 +498,6 @@ if ~registrationComplete
         subplot(3,1,1)
         plot(fidTracksX_shifted(:,i), color{i});
         xlabel('frame number');ylabel('X position (nm)');
-        title('Corrected fiducial tracks and denoising result')
         hold on
         subplot(3,1,2)
         plot(fidTracksY_shifted(:,i), color{i});
@@ -515,47 +524,37 @@ if ~registrationComplete
     end
     hold off
     
-        h = uicontrol('Position',[20 20 200 40],'String','Continue',...
-        'Callback','uiresume(gcbf)');
-    uiwait(gcf);
 
-    %% Center the last frames of the denoised fiducial track
+    %% Center the last frames of the chosen denoised fiducial track
 
-    syncFrames = find(~isnan(fidTracksX(:,1)));
+    syncFrames = find(~isnan(fidTracksX_shifted_denoised(:,chosenFidTrack))); % old version (~isnan on fidTracksX) throws an error sometimes, as nans creep into the fidTracksX_... downstream arrays sometimes
     syncFrames = syncFrames(end-(numSyncFrames-1):end);
-
-    avgDevX(:,1) = fidTracksX_shifted_denoised(:,1) - mean(fidTracksX_shifted_denoised(syncFrames,1),1);
-    avgDevY(:,1) = fidTracksY_shifted_denoised(:,1) - mean(fidTracksY_shifted_denoised(syncFrames,1),1);
-    avgDevZ(:,1) = fidTracksZ_shifted_denoised(:,1) - mean(fidTracksZ_shifted_denoised(syncFrames,1),1);
     
-    avgDevX(:,2) = fidTracksX_shifted_denoised(:,2) - mean(fidTracksX_shifted_denoised(syncFrames,2),1);
-    avgDevY(:,2) = fidTracksY_shifted_denoised(:,2) - mean(fidTracksY_shifted_denoised(syncFrames,2),1);
-    avgDevZ(:,2) = fidTracksZ_shifted_denoised(:,2) - mean(fidTracksZ_shifted_denoised(syncFrames,2),1);
+    avgDevX = fidTracksX_shifted_denoised(:,chosenFidTrack) - nanmean(fidTracksX_shifted_denoised(:,chosenFidTrack));
+    avgDevY = fidTracksY_shifted_denoised(:,chosenFidTrack) - nanmean(fidTracksY_shifted_denoised(:,chosenFidTrack));
+    avgDevZ = fidTracksZ_shifted_denoised(:,chosenFidTrack) - nanmean(fidTracksZ_shifted_denoised(:,chosenFidTrack));
     
         % Show the drift correction to be applied
+    close all; % close extraneous figures
+
     color = {'Green', 'Red', 'Blue', 'Cyan', 'Yellow' };
-    figure_h_f = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
+    figure_h_b = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
     set(gcf,'DefaultTextFontName','Arial','DefaultAxesFontName','Arial',...
         'DefaultTextFontSize',12,'DefaultAxesFontSize',12,...
         'DefaultAxesTickLength',[0.01 0.01],'DefaultAxesTickDir','out',...
         'DefaultAxesLineWidth',1.2);
 
         subplot(3,1,1)
-        plot(avgDevX(:,chosenFidTrack), color{chosenFidTrack});
+        plot(avgDevX, color{chosenFidTrack});
         xlabel('frame number');ylabel('X position (nm)');
-        title('Applied drift correction')
 
         subplot(3,1,2)
-        plot(avgDevY(:,chosenFidTrack), color{chosenFidTrack});
+        plot(avgDevY, color{chosenFidTrack});
         xlabel('frame number');ylabel('Y position (nm)');
 
         subplot(3,1,3)
-        plot(avgDevZ(:,chosenFidTrack), color{chosenFidTrack});
+        plot(avgDevZ, color{chosenFidTrack});
         xlabel('frame number');ylabel('Z position (nm)');
-        
-            h = uicontrol('Position',[20 20 200 40],'String','Continue',...
-        'Callback','uiresume(gcbf)');
-    uiwait(gcf);
 
         %% Apply fiduciary corrections
 
@@ -571,26 +570,28 @@ if ~registrationComplete
 %         dataSets(i).fidTrackZ_denoised = fidTracksZ_denoised(:,i);
 
         if dataSets(i).transformedDataset
-            dataSets(i).xLoc_driftCorr = dataSets(i).xLoc_transformed - avgDevX(dataSets(i).frameNum,chosenFidTrack);
-            dataSets(i).yLoc_driftCorr = dataSets(i).yLoc_transformed - avgDevY(dataSets(i).frameNum,chosenFidTrack);
-            dataSets(i).zLoc_driftCorr = dataSets(i).zLoc_transformed - avgDevZ(dataSets(i).frameNum,chosenFidTrack);
+            dataSets(i).xLoc_driftCorr = dataSets(i).xLoc_transformed - avgDevX(dataSets(i).frameNum);
+            dataSets(i).yLoc_driftCorr = dataSets(i).yLoc_transformed - avgDevY(dataSets(i).frameNum);
+            dataSets(i).zLoc_driftCorr = dataSets(i).zLoc_transformed - avgDevZ(dataSets(i).frameNum);
         else
-            dataSets(i).xLoc_driftCorr = dataSets(i).xLoc - avgDevX(dataSets(i).frameNum,chosenFidTrack);
-            dataSets(i).yLoc_driftCorr = dataSets(i).yLoc - avgDevY(dataSets(i).frameNum,chosenFidTrack);
-            dataSets(i).zLoc_driftCorr = dataSets(i).zLoc - avgDevZ(dataSets(i).frameNum,chosenFidTrack);
+            dataSets(i).xLoc_driftCorr = dataSets(i).xLoc - avgDevX(dataSets(i).frameNum);
+            dataSets(i).yLoc_driftCorr = dataSets(i).yLoc - avgDevY(dataSets(i).frameNum);
+            dataSets(i).zLoc_driftCorr = dataSets(i).zLoc - avgDevZ(dataSets(i).frameNum);
         end
     end
-    
-        %% Apply index mismatch corrections
-    % Todo: This is empirical. A better model accouting for index mismatch
-    % needs to developed here.
-    for i = 1:length(dataSets)
-        dataSets(i).zLoc_driftCorr_indexCorr = dataSets(i).zLoc_driftCorr * nSample/nOil;
-    end
-    
+
+    % moved lower: this was originally here
+%         %% Apply index mismatch corrections
+%     % Todo: This is empirical. A better model accouting for index mismatch
+%     % needs to developed here.
+%     for i = 1:length(dataSets)
+%         dataSets(i).zLoc_driftCorr_indexCorr = dataSets(i).zLoc_driftCorr * nSample/nOil;
+%     end 
 
     %% Show the difference between the registered fiducial tracks
-    figure_h_g = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
+    if ~exist('tformChan') % this currently doesn't work unless transform second dataset
+    
+    figure_h_c = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
     set(gcf,'DefaultTextFontName','Arial','DefaultAxesFontName','Arial',...
         'DefaultTextFontSize',12,'DefaultAxesFontSize',12,...
         'DefaultAxesTickLength',[0.01 0.01],'DefaultAxesTickDir','out',...
@@ -648,14 +649,11 @@ if ~registrationComplete
     legend({['offset = ' num2str(avg),...
         ' +/- ' num2str(stdev) ' nm']; ['interpolated TRE_3_D']})
     clear avg
-    
-        h = uicontrol('Position',[20 20 200 40],'String','Continue',...
-        'Callback','uiresume(gcbf)');
-    uiwait(gcf);
-    
- %%   
-%     %% Show the difference between the denoised and fused fiducial tracks
-%     figure_h_h = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
+    end
+    %% Show the difference between the denoised and fused fiducial tracks
+    % this uses the variables 'fidTracksX_denoised' and so on, which aren't
+    % defined...?
+%     figure_h_d = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
 %     set(gcf,'DefaultTextFontName','Arial','DefaultAxesFontName','Arial',...
 %         'DefaultTextFontSize',12,'DefaultAxesFontSize',12,...
 %         'DefaultAxesTickLength',[0.01 0.01],'DefaultAxesTickDir','out',...
@@ -713,74 +711,90 @@ if ~registrationComplete
 %     legend({['offset = ' num2str(avg),...
 %         ' +/- ' num2str(stdev) ' nm']; ['interpolated TRE_3_D']})
 %     clear avg
-%     
-%     %% Show the fiducial tracks in the same coordinate system
-%     figure_h_i = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
-%     set(gcf,'DefaultTextFontName','Arial','DefaultAxesFontName','Arial',...
-%         'DefaultTextFontSize',12,'DefaultAxesFontSize',12,...
-%         'DefaultAxesTickLength',[0.01 0.01],'DefaultAxesTickDir','out',...
-%         'DefaultAxesLineWidth',1.2);
-%     
-%     for i = 1:length(dataSets)
-%         if dataSets(i).transformedDataset
-%             scatter3(dataSets(i).fidTrackX_transformed,...
-%                 dataSets(i).fidTrackY_transformed,...
-%                 dataSets(i).fidTrackZ_transformed,...
-%                 5,'filled', color{i});
-%         else
-%             scatter3(dataSets(i).fidTrackX,...
-%                 dataSets(i).fidTrackY,...
-%                 dataSets(i).fidTrackZ,...
-%                 5,'filled', color{i});
-%         end
-%         
-%         xlabel('x (nm)');ylabel('y (nm)');zlabel('z (nm)');
-%         axis vis3d equal;
-%         hold on
-%         
-%     end
-%     hold off
-%     
-%     h = uicontrol('Position',[20 20 200 40],'String','Continue',...
-%         'Callback','uiresume(gcbf)');
-%     uiwait(gcf);
-%     
+    
+    %% Show the fiducial tracks in the same coordinate system
+    figure_h_a = figure('Position',[(scrsz(3)-1280)/2+1 (scrsz(4)-720)/2 1280 720],'color','w','renderer','painters');
+    set(gcf,'DefaultTextFontName','Arial','DefaultAxesFontName','Arial',...
+        'DefaultTextFontSize',12,'DefaultAxesFontSize',12,...
+        'DefaultAxesTickLength',[0.01 0.01],'DefaultAxesTickDir','out',...
+        'DefaultAxesLineWidth',1.2);
+    
+    for i = 1:length(dataSets)
+        if dataSets(i).transformedDataset
+            scatter3(dataSets(i).fidTrackX_transformed,...
+                dataSets(i).fidTrackY_transformed,...
+                dataSets(i).fidTrackZ_transformed,...
+                5,'filled', color{i});
+        else
+            scatter3(dataSets(i).fidTrackX,...
+                dataSets(i).fidTrackY,...
+                dataSets(i).fidTrackZ,...
+                5,'filled', color{i});
+        end
+        
+        xlabel('x (nm)');ylabel('y (nm)');zlabel('z (nm)');
+        axis vis3d equal;
+        hold on
+        
+    end
+    hold off
+    
+    h = uicontrol('Position',[20 20 200 40],'String','Continue',...
+        'Callback','uiresume(gcbf)');
+    uiwait(gcf);
+    
     %% prompt to save bead registration figures
     [saveFile, savePath] = uiputfile({'*.*'},'Enter a directory title for this ROI. Otherwise, click cancel.');
     savePath = [savePath saveFile '/'];
     mkdir(savePath);
     
-    
-    
-    
-    saveas(figure_h_a,[savePath 'XYZFidTracks_raw.fig']);
-    saveas(figure_h_a,[savePath 'XYZFidTracks_raw.png']);
+%     saveas(figure_h_a,[savePath '3DFidCorrelation.fig']);
+%     saveas(figure_h_a,[savePath '3DFidCorrelation.png']);
     close(figure_h_a)
-    saveas(figure_h_b,[savePath 'XYZFidTracks_piecewiseDenoised.fig']);
-    saveas(figure_h_b,[savePath 'XYZFidTracks_piecewiseDenoised.png']);
+    saveas(figure_h_b,[savePath 'XYZFidTracks.fig']);
+    saveas(figure_h_b,[savePath 'XYZFidTracks.png']);
     close(figure_h_b)
-    saveas(figure_h_c,[savePath 'ChromaticShiftDist.fig']);
-    saveas(figure_h_c,[savePath 'ChromaticShiftDist.png']);
+    if exist('figure_h_c')
+    saveas(figure_h_c,[savePath 'XYZFidMisregistration.fig']);
+    saveas(figure_h_c,[savePath 'XYZFidMisregistration.png']);
     close(figure_h_c)
-    saveas(figure_h_d,[savePath 'XYZFidTracks_corrected.fig']);
-    saveas(figure_h_d,[savePath 'XYZFidTracks_corrected.png']);
-    close(figure_h_d)
-    saveas(figure_h_e,[savePath 'XYZFidTracks_correctedDenoised.fig']);
-    saveas(figure_h_e,[savePath 'XYZFidTracks_correctedDenoised.png']);
-    close(figure_h_e)
-    saveas(figure_h_f,[savePath 'AppliedDriftCorrection.fig']);
-    saveas(figure_h_f,[savePath 'AppliedDriftCorrection.png']);
-    close(figure_h_f)
-    saveas(figure_h_g,[savePath 'XYZFidMisregistration.fig']);
-    saveas(figure_h_g,[savePath 'XYZFidMisregistration.png']);
-    close(figure_h_g)
-%     saveas(figure_h_h,[savePath 'XYZFidMisregistration_denoised.fig']);
-%     saveas(figure_h_h,[savePath 'XYZFidMisregistration_denoised.png']);
-%     close(figure_h_h)
-%     saveas(figure_h_i,[savePath '3DFidCorrelation.fig']);
-%     saveas(figure_h_i,[savePath '3DFidCorrelation.png']);
-%     close(figure_h_i)  
-
+    end
+%     saveas(figure_h_d,[savePath 'XYZFidMisregistration_denoised.fig']);
+%     saveas(figure_h_d,[savePath 'XYZFidMisregistration_denoised.png']);
+%     close(figure_h_d)
+    
+elseif ~useFids
+        disp('You did not use fiducials!')
+        % use the 'driftCorr' name to make the code easier, but not that
+        % these are NOT fiducial drift corrected - may want to change this
+        % to be easier to parse (e.g. use different variable name and an if
+        % statement to define which variable name to use for the following)
+        for i = 1:length(dataSets);
+            
+            if dataSets(i).transformedDataset
+                transformedDataSet = i;
+                dataSets(i).xLoc_driftCorr = dataSets(i).xLoc_transformed;
+                dataSets(i).yLoc_driftCorr = dataSets(i).yLoc_transformed;
+                dataSets(i).zLoc_driftCorr = dataSets(i).zLoc_transformed;
+            else
+                dataSets(i).xLoc_driftCorr = dataSets(i).xLoc;
+                dataSets(i).yLoc_driftCorr = dataSets(i).yLoc;
+                dataSets(i).zLoc_driftCorr = dataSets(i).zLoc;
+                untransformedDataSet = i;
+            end
+        end
+        
+        
+        [saveFile, savePath] = uiputfile({'*.*'},'Enter a directory title for this ROI. Otherwise, click cancel.');
+        savePath = [savePath saveFile '/'];
+        mkdir(savePath);
+    end
+        %% Apply index mismatch corrections
+    % Todo: This is empirical. A better model accouting for index mismatch
+    % needs to developed here.
+    for i = 1:length(dataSets)
+        dataSets(i).zLoc_driftCorr_indexCorr = dataSets(i).zLoc_driftCorr * nSample/nOil;
+    end 
     
     %% Clean up
     tform.FRE = FRE;
@@ -789,13 +803,9 @@ if ~registrationComplete
     tform.TRE_full = TRE_full;
     tform.matched_cp_reflected = matched_cp_reflected;
     tform.matched_cp_transmitted = matched_cp_transmitted	;
-    tform.matched_cp_transmitted_trans = matched_cp_transmitted_trans;
-    
-    % Need to clean up further
-    fidCorrData.avgDevX = avgDevX;
-    
-    
-    
+    if exist('matched_cp_transmitted_trans') % is this needed?
+        tform.matched_cp_transmitted_trans = matched_cp_transmitted_trans;
+    end
     registrationComplete = true
     
     clear FRE TRE FRE_full TRE_full matched_cp_reflected matched_cp_transmitted matched_cp_transmitted_trans
@@ -813,7 +823,7 @@ end
 
 %% Display the results the final fused SMACM data
 useTimeColors = 0;
-frameRange = [1 100000];
+frameRange = [1, 100000; 1, 100000];
 numPhotonRange = [0 100000];
 
 dlg_title = 'Please Input Parameters';
@@ -822,7 +832,7 @@ prompt = {  'Pixel size (in nm)',...
     'White Light Shift X (in nm)',...
     'White Light Shift Y (in nm)',...
     };
-def = {    '125.78', ...
+def = {    num2str(nmPerPixel), ...
     '30', ...
     num2str(dataSets(untransformedDataSet).wlShift(1)), ...
     num2str(dataSets(untransformedDataSet).wlShift(2)), ...
@@ -842,23 +852,28 @@ while anotherpass == true
     close all
     
     %% Plot the white light image if specified
-    if whiteLightFile ~= 0
-        whiteLightInfo = imfinfo([whiteLightPath whiteLightFile]);
-        whiteLight = zeros(whiteLightInfo(1).Height, whiteLightInfo(1).Width);
-        % average white light images together to get better SNR
-        for a = 1:length(whiteLightInfo)
-            whiteLight = whiteLight + double(imread([whiteLightPath whiteLightFile], ...
-                'Info', whiteLightInfo));
+    if pass == 1
+        if whiteLightFile ~= 0
+            whiteLightInfo = imfinfo([whiteLightPath whiteLightFile]);
+            whiteLight = zeros(whiteLightInfo(1).Height, whiteLightInfo(1).Width);
+            % average white light images together to get better SNR
+            for a = 1:length(whiteLightInfo)
+                whiteLight = whiteLight + double(imread([whiteLightPath whiteLightFile],a, ...
+                    'Info', whiteLightInfo));
+            end
+            % resize white light to the size of the ROI of the single molecule fits
+            if ~exist('tformChan') || strcmp(tformChan,'r') || strcmp(tformChan,'R')
+                ROI_initial = [1, 1, min(350,size(whiteLight,1)-1), min(350,size(whiteLight,2)-1)];
+            elseif strcmp(tformChan,'y') || strcmp(tformChan,'Y')
+                ROI_initial = [200, 200, size(whiteLight,1)-200, size(whiteLight,2)-200];
+            end
+            whiteLight = whiteLight(ROI_initial(2):ROI_initial(2)+ROI_initial(4)-1,ROI_initial(1):ROI_initial(1)+ROI_initial(3)-1);
+            % rescale white light image to vary from 0 to 1
+            whiteLight = (whiteLight-min(whiteLight(:)))/(max(whiteLight(:))-min(whiteLight(:)));
+            [xWL yWL] = meshgrid((ROI_initial(1):ROI_initial(1)+ROI_initial(3)-1) * nmPerPixel + wlShiftX, ...
+                (ROI_initial(2):ROI_initial(2)+ROI_initial(4)-1) * nmPerPixel + wlShiftY);
         end
-        % resize white light to the size of the ROI of the single molecule fits
-        ROI_initial = [1, 1, 270, 270];
-        whiteLight = whiteLight(ROI_initial(2):ROI_initial(2)+ROI_initial(4)-1,ROI_initial(1):ROI_initial(1)+ROI_initial(3)-1);
-        % rescale white light image to vary from 0 to 1
-        whiteLight = (whiteLight-min(whiteLight(:)))/(max(whiteLight(:))-min(whiteLight(:)));
-        [xWL yWL] = meshgrid((ROI_initial(1):ROI_initial(1)+ROI_initial(3)-1) * nmPerPixel + wlShiftX, ...
-            (ROI_initial(2):ROI_initial(2)+ROI_initial(4)-1) * nmPerPixel + wlShiftY);
     end
-    
     
     %% Chose a desired parameter set for reconstruction
     dlg_title = 'Please Input Parameters';
@@ -866,8 +881,10 @@ while anotherpass == true
         'Temporal Color Coding',...
         'White light shift X (in nm)',...
         'White light shift Y (in nm)',...
-        'First frame',...
-        'Last frame',...
+        'First frame (first channel)',...
+        'Last frame (first channel)',...
+        'First frame (second channel)',...
+        'Last frame (second channel)',...
         'Number of photons lower bound',...
         'Number of photons upper bound',...
         };
@@ -876,8 +893,10 @@ while anotherpass == true
         num2str(useTimeColors), ...
         num2str(wlShiftX), ...
         num2str(wlShiftY), ...
-        num2str(frameRange(1)), ...
-        num2str(frameRange(2)), ...
+        num2str(frameRange(1,1)), ...
+        num2str(frameRange(1,2)), ...
+        num2str(frameRange(2,1)), ...
+        num2str(frameRange(2,2)), ...
         num2str(numPhotonRange(1)), ...
         num2str(numPhotonRange(2)), ...
         };
@@ -888,20 +907,49 @@ while anotherpass == true
     useTimeColors = str2double(inputdialog{2});
     wlShiftX = str2double(inputdialog{3});
     wlShiftY = str2double(inputdialog{4});
-    frameRange = [str2double(inputdialog{5}) str2double(inputdialog{6})];
-    numPhotonRange = [str2double(inputdialog{7}) str2double(inputdialog{8})];
+    frameRange = [str2double(inputdialog{5}) str2double(inputdialog{6});...
+                  str2double(inputdialog{7}) str2double(inputdialog{8})];
+    numPhotonRange = [str2double(inputdialog{9}) str2double(inputdialog{10})];
     
     
     %% ask user what region to plot in superresolution image
+    
+    if pass ~= 1
+        if whiteLightFile ~= 0
+            whiteLightInfo = imfinfo([whiteLightPath whiteLightFile]);
+            whiteLight = zeros(whiteLightInfo(1).Height, whiteLightInfo(1).Width);
+            % average white light images together to get better SNR
+            for a = 1:length(whiteLightInfo)
+                whiteLight = whiteLight + double(imread([whiteLightPath whiteLightFile],a, ...
+                    'Info', whiteLightInfo));
+            end
+            % resize white light to the size of the ROI of the single molecule fits
+            ROI_initial = [1, 1, 270, 270];
+            whiteLight = whiteLight(ROI_initial(2):ROI_initial(2)+ROI_initial(4)-1,ROI_initial(1):ROI_initial(1)+ROI_initial(3)-1);
+            % rescale white light image to vary from 0 to 1
+            whiteLight = (whiteLight-min(whiteLight(:)))/(max(whiteLight(:))-min(whiteLight(:)));
+            [xWL yWL] = meshgrid((ROI_initial(1):ROI_initial(1)+ROI_initial(3)-1) * nmPerPixel + wlShiftX, ...
+                (ROI_initial(2):ROI_initial(2)+ROI_initial(4)-1) * nmPerPixel + wlShiftY);
+        end
+    end
+    
+    figure('Position',[(scrsz(3)-1280)/2 (scrsz(4)-720)/2 1280 720],'color','w');
     
     if whiteLightFile ~= 0
         xRange = xWL(1,:);
         yRange = yWL(:,1);
         % pick region that contains background
-        figure('Position',[(scrsz(3)-1280)/2 (scrsz(4)-720)/2 1280 720],'color','w');
         imagesc(xRange,yRange,whiteLight);axis image;colormap gray;
-        hold on;
+    else
+        xRange = [min(vertcat(dataSets.xLoc_driftCorr)) max(vertcat(dataSets.xLoc_driftCorr))];
+        yRange = [min(vertcat(dataSets.yLoc_driftCorr)) max(vertcat(dataSets.yLoc_driftCorr))];
+        [xBl, yBl] = meshgrid(round(xRange(1)):100:round(xRange(2)),...
+                              round(yRange(1)):100:round(yRange(2)));
+        imagesc(yBl(:,1),xBl(1,:),zeros(size(xBl)),[-1 0]); axis image; colormap gray;
     end
+    
+    
+    hold on;
     
     for i = 1:length(dataSets)
         
@@ -931,18 +979,21 @@ while anotherpass == true
         xslice = []; yslice = []; zslice = -600;
         h=slice(x,y,z,repmat(whiteLight,[1 1 2]),xslice,yslice,zslice,'nearest');
         set(h,'EdgeColor','none','FaceAlpha',0.75);
-        colormap gray; hold on;
+        colormap gray; 
     end
+    
+    hold on; grid on;
     
     for i = 1:length(dataSets)
         
         xLoc = dataSets(i).xLoc_driftCorr;
         yLoc = dataSets(i).yLoc_driftCorr;
         zLoc = dataSets(i).zLoc_driftCorr;
-        zLoc_indexCorr = dataSets(i).zLoc_driftCorr;
+        zLoc_indexCorr = dataSets(i).zLoc_driftCorr_indexCorr;
+        frameNum = dataSets(i).frameNum;
         
         validPoints = inpolygon(xLoc,yLoc,xi, yi);
-        
+        validPoints = validPoints & frameNum >= frameRange(i,1) & frameNum <= frameRange(i,2);
         xLoc = xLoc(validPoints);
         yLoc = yLoc(validPoints);
         zLoc = zLoc(validPoints);
@@ -961,6 +1012,10 @@ while anotherpass == true
         croppedDataSet.numPhotons = dataSets(i).numPhotons(validPoints);
         croppedDataSet.meanBkgnd = dataSets(i).meanBkgnd(validPoints);
         if dataSets(i).transformedDataset == 1
+            if ~exist('F_FRE')&&exist('tform')
+                F_FRE = tform.interpolationObjects.F_FRE;
+                F_TRE = tform.interpolationObjects.F_TRE;
+            end
             interpolated_FRE = F_FRE(xLoc,yLoc,zLoc);
             interpolated_TRE = F_TRE(xLoc,yLoc,zLoc);
             croppedDataSet.interpolated_FRE = interpolated_FRE;
@@ -1051,7 +1106,7 @@ while anotherpass == true
 end
 
 %% clean up
-
+if exist('F_FRE_X') % this is a kludge to allow reopening old outputs from this function
 tform.interpolationObjects.F_FRE = F_FRE;
 tform.interpolationObjects.F_FRE_X = F_FRE_X;
 tform.interpolationObjects.F_FRE_Y = F_FRE_Y;
@@ -1060,7 +1115,7 @@ tform.interpolationObjects.F_TRE = F_TRE;
 tform.interpolationObjects.F_TRE_X = F_TRE_X;
 tform.interpolationObjects.F_TRE_Y = F_TRE_Y;
 tform.interpolationObjects.F_TRE_Z = F_TRE_Z;
-
+end
 clear F_FRE F_FRE_X F_FRE_Y F_FRE_Z F_TRE F_TRE_X F_TRE_Y F_TRE_Z
 clear a anotherpass bead croppedDataSet def dlg_title f h i
 clear interpolated_FRE interpolated_FREs interpolated_TRE interpolated_TREs
@@ -1083,4 +1138,3 @@ saveas(gcf,[savePath saveFile(1:length(saveFile)-4) '_multicolorSMACM_2D.fig']);
 close all
 
 end
-
