@@ -1,6 +1,6 @@
 %% Drift correction code for soTILT - Easy DHPSF bead and DECODE data
-% Code for drift correction of 1 channel, 3 dimenesional data from DECODE and a
-% transformed bead from Easy DHPSF. Edited 3/9/23 by JL for soTILT project to be Easy DHPSF compatibale , 
+% Code for drift correction of 1 channel, 3 dimenesional data from Auto-DS3D and a
+% transformed bead from Easy DHPSF. 
 % adapting material from TransformSMACMData_v6.m
 % Input variables from SMAP in csv are xnm, ynm, znm, frame, locprecnm,
 % photon, bg, locprecznm ( in this order )
